@@ -1,0 +1,29 @@
+---------------------------------------------------------------------------
+Account Setup
+---------------------------------------------------------------------------
+CREATE-ACCOUNT DEVELOPMENT
+D:\Accounts\DEVELOPMENT
+
+
+-----------------------
+ED VOC AE
+SAVE ED
+------------------------
+PA
+PTERM CASE NOINVERT
+LONGNAMES ON
+
+https://raw.githubusercontent.com/MVHubOpen/U2_BasicSource/master/release/INSTALL.MVHUB
+
+D:\Accounts\DEVELOPMENT\BP\INSTALL.MVHUB
+
+>AE BP INSTALL.MVHUB
+-:FIBCF
+---------------------------------------------------------------------------
+Server Setup
+---------------------------------------------------------------------------
+create user
+devweb/devweb
+
+c:\Windows\System32\Drivers\etc\hosts
+127.0.0.1 database.server.com
