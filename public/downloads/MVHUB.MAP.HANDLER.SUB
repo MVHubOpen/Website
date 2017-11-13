@@ -1,0 +1,530 @@
+      SUBROUTINE MVHUB.MAP.HANDLER.SUB(REQUEST.HEADER,REQUEST,REPLY.HEADER,REPLY)
+*-------------------------------------------------------
+* Map File for Handler Build
+* Created 10:57:51 05 JAN 2017
+*-------------------------------------------------------
+      HANDLER.SUB.NAME = "MVHUB.MAP"
+      INCLUDE MVHUB.BP HANDLER.SUB.INCLUDE
+      INCLUDE MVHUB.BP PROFILE.INCLUDE
+* Custom Initialize Code
+      INCLUDE MVHUB.BP MVHUB.MAP.INCLUDE
+*
+      OPEN "MVHUB.LOG" TO F.WLOG THEN
+         WRITE REQUEST.HEADER ON F.WLOG,HANDLER.SUB.NAME:"_REQUEST_HEADER"
+         WRITE REQUEST ON F.WLOG,HANDLER.SUB.NAME:"_REQUEST"
+      END
+*
+      REPLY.STATUS="200" ; REPLY.TYPE="application/json"
+      IF UDOCreate(MVHUB_OBJECT, REPLYOBJ)#MVHUB_SUCCESS THEN ABORT
+*
+      FILENAME="MVHUB.MAP"
+      OPEN FILENAME TO @STDFIL ELSE
+         ERROR.CODE=500
+         ERROR.MESSAGE="Unknow Action :":ACTION
+         REPLY.STATUS=500
+         GOSUB ADD.ERROR
+         RETURN
+      END
+*
+      BEGIN CASE
+         CASE METHOD="GET"
+            IF URL.TABLE<1>="!QUERY" THEN
+               QUERY.LIST=DELETE(URL.TABLE,1)
+               ACTION="QUERY"
+               GOSUB MAPPED.QUERY
+            END ELSE
+               ID.REC=TRIM(URL.TABLE,"/") ; CONVERT "/" TO @AM IN ID.REC
+               ACTION="READ"
+               GOSUB GET.RECORD
+               IF REPLY.STATUS=200 THEN
+                  GOSUB BUILD.REPLY
+               END
+*
+            END
+*
+            IF UDOWrite(REPLYOBJ, MVHUB_FORMAT_JSON, REPLY)#MVHUB_SUCCESS THEN
+               REPLY.STATUS=409
+               REPLY='{"errors":[{"code": 409,"message":"Unable to render document"}]}'
+            END
+*
+         CASE METHOD="POST"
+            IF UDORead(REQUEST,MVHUB_FORMAT_JSON,INOBJ)#MVHUB_SUCCESS THEN
+               GOSUB ADD.NODE.ERROR
+            END ELSE
+               IF UDOGetProperty(INOBJ, "action", ACTION, ACTION.TYPE)#MVHUB_SUCCESS THEN
+                  GOSUB ADD.NODE.ERROR
+                  ACTION.TYPE = -1
+               END
+*
+               IF ACTION.TYPE # MVHUB_STRING THEN
+                  ERROR.CODE="900"
+                  ERROR.MESSAGE="Action is missing or must be a string"
+                  REPLY.STATUS="500"
+                  GOSUB ADD.ERROR
+               END
+            END
+*
+            IF REPLY.STATUS="200" THEN
+               STATUS = UDOSetProperty(REPLYOBJ, "action",OCONV(ACTION,"MCT"):"Reply")
+               ACTION=UPCASE(ACTION)
+               BEGIN CASE
+                  CASE ACTION="READ"
+                     GOSUB GET.ID.RECORD
+                     IF REPLY.STATUS=200 THEN GOSUB BUILD.REPLY
+                  CASE ACTION="FORMAT"
+                     ERROR.CODE=520
+                     ERROR.MESSAGE="FORMAT is not allowed with this service"
+                     GOSUB ADD.ERROR
+                  CASE ACTION="UPDATE"
+                     GOSUB GET.ID.RECORD
+                     GOSUB APPLY.UPDATE
+                     GOSUB UPDATE.FILE
+                     GOSUB GET.RECORD
+                     GOSUB BUILD.REPLY
+                  CASE ACTION="CREATE"
+                     ERROR.CODE=520
+                     ERROR.MESSAGE="CREATE is not allowed with this service"
+                     GOSUB ADD.ERROR
+                  CASE ACTION="DELETE"
+                  CASE ACTION="QUERY"
+                     GOSUB QUERY.FILE
+                  CASE ACTION="ERROR"    ; * Error Already Handled
+                  CASE 1
+                     ERROR.CODE=500
+                     ERROR.MESSAGE="Unknow Action :":ACTION
+                     GOSUB ADD.ERROR
+               END CASE
+*
+               IF UDOWrite(REPLYOBJ, MVHUB_FORMAT_JSON, REPLY)#MVHUB_SUCCESS THEN
+                  REPLY.STATUS=409
+                  REPLY='{"errors":[{"code": 409,"message":"Unable to render document"}]}'
+               END
+*
+            END
+*
+         CASE 1
+            REPLY.STATUS="405" ; REPLY.TYPE="text/plain"
+            REPLY=METHOD:" not supported"
+      END CASE
+      RELEASE
+      CLOSE FILE
+*
+      RETURN
+*-------------------------------------------------------
+QUERY.FILE:
+*-------------------------------------------------------
+*-------------------------------------------------------
+MAPPED.QUERY:
+*-------------------------------------------------------
+      STATUS = UDOSetProperty(REPLYOBJ, "action",OCONV(ACTION,"MCT"):"Reply")
+      STATUS = UDOCreate(MVHUB_ARRAY,COLUMNARRY)
+      STATUS = UDOSetProperty(REPLYOBJ, "columns",COLUMNARRY)
+*
+      IF UDOCreate(MVHUB_OBJECT,COLUMNOBJ)=MVHUB_SUCCESS THEN
+         IF UDOArrayAppendItem(COLUMNARRY,COLUMNOBJ)=MVHUB_SUCCESS THEN
+            IF UDOSetProperty(COLUMNOBJ, "name","mapId")#MVHUB_SUCCESS THEN ERROR.PREPEND="[mapId]" ; GOSUB ADD.NODE.ERROR
+            IF UDOSetProperty(COLUMNOBJ, "label","Map Id")#MVHUB_SUCCESS THEN ERROR.PREPEND="[mapId]" ; GOSUB ADD.NODE.ERROR
+            IF UDOSetProperty(COLUMNOBJ, "length",30)#MVHUB_SUCCESS THEN ERROR.PREPEND="[mapId]" ; GOSUB ADD.NODE.ERROR
+         END
+      END
+      IF UDOCreate(MVHUB_OBJECT,COLUMNOBJ)=MVHUB_SUCCESS THEN
+         IF UDOArrayAppendItem(COLUMNARRY,COLUMNOBJ)=MVHUB_SUCCESS THEN
+            IF UDOSetProperty(COLUMNOBJ, "name","title")#MVHUB_SUCCESS THEN ERROR.PREPEND="[title]" ; GOSUB ADD.NODE.ERROR
+            IF UDOSetProperty(COLUMNOBJ, "label","Title")#MVHUB_SUCCESS THEN ERROR.PREPEND="[title]" ; GOSUB ADD.NODE.ERROR
+            IF UDOSetProperty(COLUMNOBJ, "length",30)#MVHUB_SUCCESS THEN ERROR.PREPEND="[title]" ; GOSUB ADD.NODE.ERROR
+         END
+      END
+      IF UDOCreate(MVHUB_OBJECT,COLUMNOBJ)=MVHUB_SUCCESS THEN
+         IF UDOArrayAppendItem(COLUMNARRY,COLUMNOBJ)=MVHUB_SUCCESS THEN
+            IF UDOSetProperty(COLUMNOBJ, "name","databaseFilename")#MVHUB_SUCCESS THEN ERROR.PREPEND="[databaseFilename]" ; GOSUB ADD.NODE.ERROR
+            IF UDOSetProperty(COLUMNOBJ, "label","Database Filename")#MVHUB_SUCCESS THEN ERROR.PREPEND="[databaseFilename]" ; GOSUB ADD.NODE.ERROR
+            IF UDOSetProperty(COLUMNOBJ, "length",30)#MVHUB_SUCCESS THEN ERROR.PREPEND="[databaseFilename]" ; GOSUB ADD.NODE.ERROR
+         END
+      END
+      IF UDOCreate(MVHUB_OBJECT,COLUMNOBJ)=MVHUB_SUCCESS THEN
+         IF UDOArrayAppendItem(COLUMNARRY,COLUMNOBJ)=MVHUB_SUCCESS THEN
+            IF UDOSetProperty(COLUMNOBJ, "name","version")#MVHUB_SUCCESS THEN ERROR.PREPEND="[version]" ; GOSUB ADD.NODE.ERROR
+            IF UDOSetProperty(COLUMNOBJ, "label","Version")#MVHUB_SUCCESS THEN ERROR.PREPEND="[version]" ; GOSUB ADD.NODE.ERROR
+            IF UDOSetProperty(COLUMNOBJ, "length",12)#MVHUB_SUCCESS THEN ERROR.PREPEND="[version]" ; GOSUB ADD.NODE.ERROR
+         END
+      END
+      IF UDOCreate(MVHUB_OBJECT,COLUMNOBJ)=MVHUB_SUCCESS THEN
+         IF UDOArrayAppendItem(COLUMNARRY,COLUMNOBJ)=MVHUB_SUCCESS THEN
+            IF UDOSetProperty(COLUMNOBJ, "name","sourceCodeFile")#MVHUB_SUCCESS THEN ERROR.PREPEND="[sourceCodeFile]" ; GOSUB ADD.NODE.ERROR
+            IF UDOSetProperty(COLUMNOBJ, "label","Source Code File")#MVHUB_SUCCESS THEN ERROR.PREPEND="[sourceCodeFile]" ; GOSUB ADD.NODE.ERROR
+            IF UDOSetProperty(COLUMNOBJ, "length",15)#MVHUB_SUCCESS THEN ERROR.PREPEND="[sourceCodeFile]" ; GOSUB ADD.NODE.ERROR
+         END
+      END
+      STATUS = UDOCreate(MVHUB_ARRAY,LISTARRY)
+      STATUS = UDOSetProperty(REPLYOBJ, "list",LISTARRY)
+*
+      SEL.STMT="SELECT ":FILENAME
+      EXECUTE SEL.STMT CAPTURING OUTPUT RTNLIST WORKLIST RETURNING FUNCTION_EXIT_CODE
+      DONE=@FALSE ; QUERY.CNT=0
+      LOOP
+         READNEXT ID FROM WORKLIST ELSE DONE=@TRUE
+      UNTIL DONE DO
+         READ RECORD FROM FILE,ID THEN
+            IF UDOCreate(MVHUB_OBJECT,LISTOBJ)=MVHUB_SUCCESS THEN
+               IF UDOArrayAppendItem(LISTARRY,LISTOBJ)=MVHUB_SUCCESS THEN
+                  STATUS = UDOCreate(MVHUB_OBJECT, KEYOBJ)
+                  STATUS = UDOSetProperty(LISTOBJ, "key",KEYOBJ)
+*
+                  QUERY.CNT+=1
+                  ID.REC=ID
+                  STATUS = UDOCreate(MVHUB_OBJECT, ITEMOBJ)
+                  STATUS = UDOSetProperty(LISTOBJ, "item",ITEMOBJ)
+*
+                  IF UDOSetProperty(KEYOBJ, "mapId",OCONV(ID.REC<1>,"MCU"))#MVHUB_SUCCESS THEN ERROR.PREPEND="[mapId]" ; GOSUB ADD.NODE.ERROR
+                  IF UDOSetProperty(ITEMOBJ, "mapId",OCONV(ID.REC<1>,"MCU"))#MVHUB_SUCCESS THEN ERROR.PREPEND="[mapId]" ; GOSUB ADD.NODE.ERROR
+                  IF UDOSetProperty(ITEMOBJ, "title",RECORD<1>)#MVHUB_SUCCESS THEN ERROR.PREPEND="[title]" ; GOSUB ADD.NODE.ERROR
+                  IF UDOSetProperty(ITEMOBJ, "databaseFilename",RECORD<2>)#MVHUB_SUCCESS THEN ERROR.PREPEND="[databaseFilename]" ; GOSUB ADD.NODE.ERROR
+                  IF UDOSetProperty(ITEMOBJ, "version",RECORD<3>)#MVHUB_SUCCESS THEN ERROR.PREPEND="[version]" ; GOSUB ADD.NODE.ERROR
+                  IF UDOSetProperty(ITEMOBJ, "sourceCodeFile",RECORD<5>)#MVHUB_SUCCESS THEN ERROR.PREPEND="[sourceCodeFile]" ; GOSUB ADD.NODE.ERROR
+                  STATUS = UDOSetProperty(REPLYOBJ, "count",QUERY.CNT)
+*
+                  STATUS = UDOSetProperty(REPLYOBJ, "select",SEL.STMT)
+*
+                  STATUS = UDOSetProperty(REPLYOBJ, "title","Map File for Handler Build")
+*
+               END
+            END
+         END
+      REPEAT
+      RETURN
+*-------------------------------------------------------
+GET.ID.RECORD:
+*-------------------------------------------------------
+      ID.REC=""
+      IF UDOGetProperty(INOBJ, "key", KEYOBJ, KEYOBJ.TYPE)#MVHUB_SUCCESS THEN
+         GOSUB ADD.NODE.ERROR
+         KEYOBJ.TYPE = -1
+      END
+*
+      IF KEYOBJ.TYPE # MVHUB_OBJECT THEN
+         ERROR.CODE=400
+         ERROR.MESSAGE="[key is missing or must be a object"
+         GOSUB ADD.ERROR
+         REPLY.STATUS="400"
+      END
+      STATUS = UDOGetProperty(KEYOBJ, "mapId", VALUE, VALUE.TYPE)
+      IF STATUS = MVHUB_ERROR THEN
+         STATUS = UDOGetLastError(ERROR.CODE,ERROR.MESSAGE)
+         ERROR.MESSAGE="[mapId] ":ERROR.MESSAGE
+         GOSUB ADD.ERROR
+         RETURN
+      END
+      IF VALUE.TYPE=MVHUB_STRING OR VALUE.TYPE=MVHUB_NUMBER THEN ID.REC<1> = VALUE
+*
+* Fall Though with ID
+*-------------------------------------------------------
+GET.RECORD:
+*-------------------------------------------------------
+      ID = ID.REC
+      RECORD="" ; WORK.RECORD=""
+*
+      READU RECORD FROM FILE,ID ELSE
+         IF ACTION="READ" THEN
+            REPLY.STATUS=404
+            ERROR.CODE=REPLY.STATUS
+            ERROR.MESSAGE=ID:" not on file (MVHUB.MAP)"
+            GOSUB ADD.ERROR
+            RETURN
+         END
+         RECORD=""
+      END
+*
+      RETURN
+*-------------------------------------------------------
+APPLY.UPDATE:
+*-------------------------------------------------------
+      ID.REC=ID
+      STATUS = UDOGetProperty(INOBJ, "item", ITEMOBJ, ITEMOBJ.TYPE)
+      IF STATUS = MVHUB_ERROR THEN
+         STATUS = UDOGetLastError(ERROR.CODE,ERROR.MESSAGE)
+         ERROR.MESSAGE="[key] ":ERROR.MESSAGE
+         GOSUB ADD.ERROR
+         RETURN
+      END
+*
+      IF ITEMOBJ.TYPE # MVHUB_OBJECT THEN
+         RERROR.CODE=400
+         ERROR.MESSAGE="[item] is missing or must be a object"
+         GOSUB ADD.ERROR
+         RETURN
+      END
+*
+*
+      IF UDOGetProperty(ITEMOBJ, "title",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+         RECORD<1>=VALUE
+      END
+*
+      IF UDOGetProperty(ITEMOBJ, "databaseFilename",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+         RECORD<2>=VALUE
+      END
+*
+      IF UDOGetProperty(ITEMOBJ, "version",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+         RECORD<3>=VALUE
+      END
+*
+      IF UDOGetProperty(ITEMOBJ, "delimiter",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+         RECORD<4>=VALUE
+      END
+*
+      IF UDOGetProperty(ITEMOBJ, "sourceCodeFile",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+         RECORD<5>=VALUE
+      END
+*
+      IF UDOGetProperty(ITEMOBJ, "createCode",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+         CONVERT CHAR(10):CHAR(13) TO @VM IN VALUE
+         RECORD<10>=VALUE
+      END
+*
+      IF UDOGetProperty(ITEMOBJ, "readCode",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+         CONVERT CHAR(10):CHAR(13) TO @VM IN VALUE
+         RECORD<11>=VALUE
+      END
+*
+      IF UDOGetProperty(ITEMOBJ, "writeCode",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+         RECORD<12>=VALUE
+      END
+*
+      IF UDOGetProperty(ITEMOBJ, "initializeCode",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+         CONVERT CHAR(10):CHAR(13) TO @VM IN VALUE
+         RECORD<13>=VALUE
+      END
+*
+      IF UDOGetProperty(ITEMOBJ, "eventCode",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+         CONVERT CHAR(10):CHAR(13) TO @VM IN VALUE
+         RECORD<14>=VALUE
+      END
+*
+* Reset fields Table
+*
+      RECORD<50>="" ; RECORD<51>="" ; RECORD<52>="" ; RECORD<53>=""
+      RECORD<54>="" ; RECORD<55>="" ; RECORD<56>="" ; RECORD<57>=""
+      RECORD<58>="" ; RECORD<59>="" ; RECORD<60>="" ; RECORD<61>=""
+      RECORD<62>=""
+*
+      IF UDOGetProperty(ITEMOBJ,"fields",FIELDSTABLEARY,CHK.TYPE)#MVHUB_SUCCESS THEN
+         ERROR.PREPEND="[fields]" ; GOSUB ADD.NODE.ERROR
+      END ELSE
+         LOOP.POS=0
+         LOOP
+            STATUS = UDOArrayGetNextItem(FIELDSTABLEARY,UPDATEOBJ,UPDATEOBJ.TYPE)
+         UNTIL STATUS = MVHUB_ERROR DO
+            LOOP.POS+=1
+*
+            IF UDOGetProperty(UPDATEOBJ, "record",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+               RECORD<50,LOOP.POS>=VALUE
+            END
+*
+            IF UDOGetProperty(UPDATEOBJ, "name",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+               RECORD<51,LOOP.POS>=VALUE
+            END
+*
+            IF UDOGetProperty(UPDATEOBJ, "association",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+               VALUE=ICONV(VALUE,"MCU")
+               RECORD<52,LOOP.POS>=VALUE
+            END
+*
+            IF UDOGetProperty(UPDATEOBJ, "attr",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+               VALUE=ICONV(VALUE,"MD0")
+               RECORD<53,LOOP.POS>=VALUE+0
+            END
+*
+            IF UDOGetProperty(UPDATEOBJ, "vpos",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+               VALUE=ICONV(VALUE,"MD0")
+               RECORD<54,LOOP.POS>=VALUE+0
+            END
+*
+            IF UDOGetProperty(UPDATEOBJ, "spos",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+               VALUE=ICONV(VALUE,"MD0")
+               RECORD<55,LOOP.POS>=VALUE+0
+            END
+*
+            IF UDOGetProperty(UPDATEOBJ, "type",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+               VALUE=ICONV(VALUE,"MCU")
+               RECORD<56,LOOP.POS>=VALUE
+            END
+*
+            IF UDOGetProperty(UPDATEOBJ, "conversion",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+               RECORD<57,LOOP.POS>=VALUE
+            END
+*
+            IF UDOGetProperty(UPDATEOBJ, "length",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+               VALUE=ICONV(VALUE,"MD0")
+               RECORD<58,LOOP.POS>=VALUE+0
+            END
+*
+            IF UDOGetProperty(UPDATEOBJ, "readonly",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+               IF VALUE.TYPE=MVHUB_TRUE THEN VALUE=@TRUE
+               IF VALUE.TYPE=MVHUB_FALSE THEN VALUE=@FALSE
+               IF NOT(VALUE) AND VALUE#"" THEN VALUE="N" ELSE VALUE="Y"
+               RECORD<59,LOOP.POS>=VALUE
+            END
+*
+            IF UDOGetProperty(UPDATEOBJ, "query",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+               IF VALUE.TYPE=MVHUB_TRUE THEN VALUE=@TRUE
+               IF VALUE.TYPE=MVHUB_FALSE THEN VALUE=@FALSE
+               IF NOT(VALUE) AND VALUE#"" THEN VALUE="N" ELSE VALUE="Y"
+               RECORD<60,LOOP.POS>=VALUE
+            END
+*
+            IF UDOGetProperty(UPDATEOBJ, "label",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+               RECORD<61,LOOP.POS>=VALUE
+            END
+*
+            IF UDOGetProperty(UPDATEOBJ, "comment",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+               RECORD<62,LOOP.POS>=VALUE
+            END
+         REPEAT
+      END
+*
+*
+* Reset associated Table
+*
+      RECORD<26>="" ; RECORD<27>="" ; RECORD<28>="" ; RECORD<29>=""
+*
+      IF UDOGetProperty(ITEMOBJ,"associated",ASSOCIATEDTABLEARY,CHK.TYPE)#MVHUB_SUCCESS THEN
+         ERROR.PREPEND="[associated]" ; GOSUB ADD.NODE.ERROR
+      END ELSE
+         LOOP.POS=0
+         LOOP
+            STATUS = UDOArrayGetNextItem(ASSOCIATEDTABLEARY,UPDATEOBJ,UPDATEOBJ.TYPE)
+         UNTIL STATUS = MVHUB_ERROR DO
+            LOOP.POS+=1
+*
+            IF UDOGetProperty(UPDATEOBJ, "key",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+               VALUE=ICONV(VALUE,"MCU")
+               RECORD<26,LOOP.POS>=VALUE
+            END
+*
+            IF UDOGetProperty(UPDATEOBJ, "name",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+               RECORD<27,LOOP.POS>=VALUE
+            END
+*
+            IF UDOGetProperty(UPDATEOBJ, "description",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+               RECORD<28,LOOP.POS>=VALUE
+            END
+*
+            IF UDOGetProperty(UPDATEOBJ, "ctrlAttr",VALUE,VALUE.TYPE)=MVHUB_SUCCESS THEN
+               VALUE=ICONV(VALUE,"MD0")
+               RECORD<29,LOOP.POS>=VALUE+0
+            END
+         REPEAT
+      END
+*
+*
+      RETURN
+*-------------------------------------------------------
+UPDATE.FILE:
+*-------------------------------------------------------
+* Custom Write Code
+      WRITE RECORD ON FILE,ID
+      EXECUTE "CREATE.MVHUB MVHUB.MAP /COMPILE /CATALOG " CAPTURING MEMORY
+*
+*
+      RETURN
+*-------------------------------------------------------
+BUILD.REPLY:
+*-------------------------------------------------------
+      STATUS = UDOCreate(MVHUB_OBJECT, KEYOBJ)
+      STATUS = UDOSetProperty(REPLYOBJ, "key",KEYOBJ)
+*
+      ID.REC=ID
+      STATUS = UDOCreate(MVHUB_OBJECT, ITEMOBJ)
+      STATUS = UDOSetProperty(REPLYOBJ, "item",ITEMOBJ)
+*
+      IF UDOSetProperty(KEYOBJ, "mapId",OCONV(ID.REC<1>,"MCU"))#MVHUB_SUCCESS THEN ERROR.PREPEND="[mapId]" ; GOSUB ADD.NODE.ERROR
+      IF UDOSetProperty(ITEMOBJ, "title",RECORD<1>)#MVHUB_SUCCESS THEN ERROR.PREPEND="[title]" ; GOSUB ADD.NODE.ERROR
+      IF UDOSetProperty(ITEMOBJ, "databaseFilename",RECORD<2>)#MVHUB_SUCCESS THEN ERROR.PREPEND="[databaseFilename]" ; GOSUB ADD.NODE.ERROR
+      IF UDOSetProperty(ITEMOBJ, "version",RECORD<3>)#MVHUB_SUCCESS THEN ERROR.PREPEND="[version]" ; GOSUB ADD.NODE.ERROR
+      IF UDOSetProperty(ITEMOBJ, "delimiter",RECORD<4>)#MVHUB_SUCCESS THEN ERROR.PREPEND="[delimiter]" ; GOSUB ADD.NODE.ERROR
+      IF UDOSetProperty(ITEMOBJ, "sourceCodeFile",RECORD<5>)#MVHUB_SUCCESS THEN ERROR.PREPEND="[sourceCodeFile]" ; GOSUB ADD.NODE.ERROR
+*
+      VALUE=RECORD<10>
+      CONVERT @VM TO CHAR(10) IN VALUE
+      IF UDOSetProperty(ITEMOBJ, "createCode",VALUE)#MVHUB_SUCCESS THEN ERROR.PREPEND="[createCode]" ; GOSUB ADD.NODE.ERROR
+*
+      VALUE=RECORD<11>
+      CONVERT @VM TO CHAR(10) IN VALUE
+      IF UDOSetProperty(ITEMOBJ, "readCode",VALUE)#MVHUB_SUCCESS THEN ERROR.PREPEND="[readCode]" ; GOSUB ADD.NODE.ERROR
+      IF UDOSetProperty(ITEMOBJ, "writeCode",RECORD<12>)#MVHUB_SUCCESS THEN ERROR.PREPEND="[writeCode]" ; GOSUB ADD.NODE.ERROR
+*
+      VALUE=RECORD<13>
+      CONVERT @VM TO CHAR(10) IN VALUE
+      IF UDOSetProperty(ITEMOBJ, "initializeCode",VALUE)#MVHUB_SUCCESS THEN ERROR.PREPEND="[initializeCode]" ; GOSUB ADD.NODE.ERROR
+*
+      VALUE=RECORD<14>
+      CONVERT @VM TO CHAR(10) IN VALUE
+      IF UDOSetProperty(ITEMOBJ, "eventCode",VALUE)#MVHUB_SUCCESS THEN ERROR.PREPEND="[eventCode]" ; GOSUB ADD.NODE.ERROR
+*
+* Table for fields
+*
+      STATUS = UDOCreate(MVHUB_ARRAY,FIELDSTABLEARY)
+      STATUS = UDOSetProperty(ITEMOBJ,"fields",FIELDSTABLEARY)
+      LOOP.CNT=DCOUNT(RECORD<56>,@VM)
+      FOR LOOP.POS=1 TO LOOP.CNT
+         IF UDOCreate(MVHUB_OBJECT,FIELDSOBJ)#MVHUB_SUCCESS THEN
+            ERROR.PREPEND="[FIELDSOBJ]" ; GOSUB ADD.NODE.ERROR
+         END ELSE
+            IF UDOArrayAppendItem(FIELDSTABLEARY,FIELDSOBJ)#MVHUB_SUCCESS THEN
+               ERROR.PREPEND="[FIELDSOBJ]" ; GOSUB ADD.NODE.ERROR
+            END ELSE
+               IF UDOSetProperty(FIELDSOBJ, "record",RECORD<50,LOOP.POS>)#MVHUB_SUCCESS THEN ERROR.PREPEND="[record]" ; GOSUB ADD.NODE.ERROR
+               IF UDOSetProperty(FIELDSOBJ, "name",RECORD<51,LOOP.POS>)#MVHUB_SUCCESS THEN ERROR.PREPEND="[name]" ; GOSUB ADD.NODE.ERROR
+               IF UDOSetProperty(FIELDSOBJ, "association",OCONV(RECORD<52,LOOP.POS>,"MCU"))#MVHUB_SUCCESS THEN ERROR.PREPEND="[association]" ; GOSUB ADD.NODE.ERROR
+               IF UDOSetProperty(FIELDSOBJ, "attr",OCONV(RECORD<53,LOOP.POS>,"MD0")+0)#MVHUB_SUCCESS THEN ERROR.PREPEND="[attr]" ; GOSUB ADD.NODE.ERROR
+               IF UDOSetProperty(FIELDSOBJ, "vpos",OCONV(RECORD<54,LOOP.POS>,"MD0")+0)#MVHUB_SUCCESS THEN ERROR.PREPEND="[vpos]" ; GOSUB ADD.NODE.ERROR
+               IF UDOSetProperty(FIELDSOBJ, "spos",OCONV(RECORD<55,LOOP.POS>,"MD0")+0)#MVHUB_SUCCESS THEN ERROR.PREPEND="[spos]" ; GOSUB ADD.NODE.ERROR
+               IF UDOSetProperty(FIELDSOBJ, "type",OCONV(RECORD<56,LOOP.POS>,"MCU"))#MVHUB_SUCCESS THEN ERROR.PREPEND="[type]" ; GOSUB ADD.NODE.ERROR
+               IF UDOSetProperty(FIELDSOBJ, "conversion",RECORD<57,LOOP.POS>)#MVHUB_SUCCESS THEN ERROR.PREPEND="[conversion]" ; GOSUB ADD.NODE.ERROR
+               IF UDOSetProperty(FIELDSOBJ, "length",OCONV(RECORD<58,LOOP.POS>,"MD0")+0)#MVHUB_SUCCESS THEN ERROR.PREPEND="[length]" ; GOSUB ADD.NODE.ERROR
+*
+               VALUE=RECORD<59,LOOP.POS>
+               IF VALUE="N" THEN VALUE=@FALSE ELSE VALUE=@TRUE
+               IF VALUE THEN
+                  STATUS = UDOCreate(MVHUB_TRUE, trueFalseObj) ; 
+               END ELSE
+                  STATUS = UDOCreate(MVHUB_FALSE, trueFalseObj) ; 
+               END
+               IF UDOSetProperty(FIELDSOBJ, "readonly",trueFalseObj)#MVHUB_SUCCESS THEN ERROR.PREPEND="[readonly]" ; GOSUB ADD.NODE.ERROR
+*
+               VALUE=RECORD<60,LOOP.POS>
+               IF VALUE="N" THEN VALUE=@FALSE ELSE VALUE=@TRUE
+               IF VALUE THEN
+                  STATUS = UDOCreate(MVHUB_TRUE, trueFalseObj) ; 
+               END ELSE
+                  STATUS = UDOCreate(MVHUB_FALSE, trueFalseObj) ; 
+               END
+               IF UDOSetProperty(FIELDSOBJ, "query",trueFalseObj)#MVHUB_SUCCESS THEN ERROR.PREPEND="[query]" ; GOSUB ADD.NODE.ERROR
+               IF UDOSetProperty(FIELDSOBJ, "label",RECORD<61,LOOP.POS>)#MVHUB_SUCCESS THEN ERROR.PREPEND="[label]" ; GOSUB ADD.NODE.ERROR
+               IF UDOSetProperty(FIELDSOBJ, "comment",RECORD<62,LOOP.POS>)#MVHUB_SUCCESS THEN ERROR.PREPEND="[comment]" ; GOSUB ADD.NODE.ERROR
+            END
+         END
+      NEXT LOOP.POS
+*
+*
+* Table for associated
+*
+      STATUS = UDOCreate(MVHUB_ARRAY,ASSOCIATEDTABLEARY)
+      STATUS = UDOSetProperty(ITEMOBJ,"associated",ASSOCIATEDTABLEARY)
+      LOOP.CNT=DCOUNT(RECORD<27>,@VM)
+      FOR LOOP.POS=1 TO LOOP.CNT
+         IF UDOCreate(MVHUB_OBJECT,ASSOCIATEDOBJ)#MVHUB_SUCCESS THEN
+            ERROR.PREPEND="[ASSOCIATEDOBJ]" ; GOSUB ADD.NODE.ERROR
+         END ELSE
+            IF UDOArrayAppendItem(ASSOCIATEDTABLEARY,ASSOCIATEDOBJ)#MVHUB_SUCCESS THEN
+               ERROR.PREPEND="[ASSOCIATEDOBJ]" ; GOSUB ADD.NODE.ERROR
+            END ELSE
+               IF UDOSetProperty(ASSOCIATEDOBJ, "key",OCONV(RECORD<26,LOOP.POS>,"MCU"))#MVHUB_SUCCESS THEN ERROR.PREPEND="[key]" ; GOSUB ADD.NODE.ERROR
+               IF UDOSetProperty(ASSOCIATEDOBJ, "name",RECORD<27,LOOP.POS>)#MVHUB_SUCCESS THEN ERROR.PREPEND="[name]" ; GOSUB ADD.NODE.ERROR
+               IF UDOSetProperty(ASSOCIATEDOBJ, "description",RECORD<28,LOOP.POS>)#MVHUB_SUCCESS THEN ERROR.PREPEND="[description]" ; GOSUB ADD.NODE.ERROR
+               IF UDOSetProperty(ASSOCIATEDOBJ, "ctrlAttr",OCONV(RECORD<29,LOOP.POS>,"MD0")+0)#MVHUB_SUCCESS THEN ERROR.PREPEND="[ctrlAttr]" ; GOSUB ADD.NODE.ERROR
+            END
+         END
+      NEXT LOOP.POS
+*
+*
+      RETURN
