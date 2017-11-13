@@ -1,0 +1,15 @@
+<div class="container-fluid">
+    <div class="row" ng-repeat="link in siteLinks">
+        <div class="col-lg-1"></div>
+        <div class="col-lg-8">
+            <h1 class="section-heading">{{link.title}} <a ng-click="openRepository(link)">
+                <img style="height: 25px;" src="/img/GitHub-Mark-Light-32px.png" alt="Fork me on GitHub">
+            </a>
+            </h1>
+            <p class="lead section-lead">{{link.subTitle}}</p>
+            <p class="section-paragraph">{{link.copy}}
+            </p>
+        </div>
+        <div class="col-lg-3"></div>
+    </div>
+</div>
