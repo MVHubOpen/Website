@@ -1,0 +1,22 @@
+{
+  "name": "mvhubopen_website",
+  "version": "1.0.0",
+  "description": "MVHub Open Website",
+  "main": "docs/index.html",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MVHubOpen/Website.git"
+  },
+  "author": "Site Team",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/MVHubOpen/Website/issues"
+  },
+  "homepage": "https://github.com/MVHubOpen/Website#readme"
+}
